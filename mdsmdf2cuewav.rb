@@ -53,6 +53,11 @@ LAYOUT_WAVE_RIFF = [
 	[:data_size, "V", 1],
 ]
 
+LAYOUT_MDS_EXTRABLOCK = [
+	[:pregap, "V", 1],
+	[:sectors, "V", 1],
+]
+
 
 def dump(layout, data)
 	format = ""
@@ -144,6 +149,7 @@ def create_cue(mds_file, wav_file, cue_file)
 
 	File.open(mds_file, "r") { |fp|
 		header = load(fp, LAYOUT_MDS_HEADER)
+		header[:pregap_corr] = [header[:pregap_corr]].pack("l").unpack("l")[0]
 
 		header[:num_leadin].times { 
 			data_block = load(fp, LAYOUT_MDS_DATABLOCK)
@@ -152,10 +158,22 @@ def create_cue(mds_file, wav_file, cue_file)
 		File.open(cue_file, "w") { |fp2|
 			fp2.puts("FILE \"#{wav_file}\" WAVE")
 
+			offset = 0
+
 			header[:num_tracks].times { 
 				data_block = load(fp, LAYOUT_MDS_DATABLOCK)
 
-				sec = data_block[:min] * 60 + data_block[:sec] - 2 
+				last_pos = fp.tell
+
+				fp.pos = data_block[:ofs_extra]
+
+				extra_block = load(fp, LAYOUT_MDS_EXTRABLOCK)
+
+				fp.pos = last_pos
+
+				offset += extra_block[:pregap] / 75
+
+				sec = data_block[:min] * 60 + data_block[:sec] + (header[:pregap_corr] / 75)
 
 				fp2.puts(sprintf("  TRACK %02d AUDIO", data_block[:track]))
 				fp2.puts(sprintf("    INDEX 01 %02d:%02d:%02d", sec / 60, sec % 60, data_block[:frame]))
